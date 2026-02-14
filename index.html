@@ -1,0 +1,97 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shamim Ahmed | Digital Architect</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Exo 2', sans-serif;
+            background-color: #020617;
+            color: #e2e8f0;
+            overflow: hidden;
+        }
+        .star-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, #0a1128 0%, #020617 100%);
+            z-index: -1;
+        }
+        .stars {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-image: radial-gradient(rgba(255,255,255,0.3) 1px, transparent 1px);
+            background-size: 80px 80px;
+            opacity: 0.2;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.45);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .perspective-1000 {
+            perspective: 1000px;
+        }
+        .rotate-y-12 {
+            transform: rotateY(12deg);
+        }
+        .hover-3d:hover {
+            transform: translateZ(20px) rotateX(5deg) rotateY(-5deg);
+        }
+        .transition-3d {
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform-style: preserve-3d;
+        }
+        @keyframes modal-reveal {
+            from { opacity: 0; transform: scale(0.9) translateY(40px) rotateX(-10deg); }
+            to { opacity: 1; transform: scale(1) translateY(0) rotateX(0); }
+        }
+        .animate-modal {
+            animation: modal-reveal 0.5s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .text-glow-cyan { text-shadow: 0 0 15px rgba(34, 211, 238, 0.5); }
+        .text-glow-rose { text-shadow: 0 0 15px rgba(244, 63, 94, 0.5); }
+        .text-glow-indigo { text-shadow: 0 0 15px rgba(99, 102, 241, 0.5); }
+        .text-glow-orange { text-shadow: 0 0 15px rgba(249, 115, 22, 0.5); }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@19.0.0",
+    "react/": "https://esm.sh/react@19.0.0/",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/": "https://esm.sh/react-dom@19.0.0/",
+    "firebase/app": "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js",
+    "firebase/": "https://esm.sh/firebase@^12.9.0/"
+  }
+}
+</script>
+</head>
+<body>
+    <div id="root"></div>
+</body>
+</html>
