@@ -7,31 +7,31 @@ export const MENU_ITEMS = [
     id: Section.ABOUT,
     label: 'ABOUT',
     icon: 'https://img.freepik.com/premium-photo/profile-icon-3d-rendered-icon-user-icon_444773-57.jpg?w=360',
-    color: 'border-cyan-400 text-cyan-400 shadow-cyan-500/50'
+    color: 'border-cyan-500 text-cyan-600 shadow-cyan-200/50'
   },
   {
     id: Section.WORKING,
     label: 'WORKING',
     icon: 'https://cdn3d.iconscout.com/3d/premium/thumb/rush-time-3d-icon-png-download-11246496.png',
-    color: 'border-indigo-400 text-indigo-400 shadow-indigo-500/50'
+    color: 'border-indigo-500 text-indigo-600 shadow-indigo-200/50'
   },
   {
     id: Section.PORTFOLIO,
     label: 'PORTFOLIO',
     icon: 'https://img.freepik.com/premium-vector/3d-folder-paper-management-multimedia-file-document-efficient-work-project-plan-concept-image-video-document-minimal-folder-icon-3d-vector-picture-render-isolated-blue-background_412828-1362.jpg?semt=ais_hybrid&w=740&q=80',
-    color: 'border-blue-400 text-blue-400 shadow-blue-500/50'
+    color: 'border-blue-500 text-blue-600 shadow-blue-200/50'
   },
   {
     id: Section.APPOINTMENT,
     label: 'APPOINTMENT',
     icon: 'https://img.freepik.com/premium-vector/3d-calendar-marked-date-time-reminder-day-background-calendar-with-clock-schedule-appointment-event-day-holiday-planning-concept-3d-alarm-clock-icon-vector-render-illustration_412828-2327.jpg?semt=ais_user_personalization&w=740&q=80',
-    color: 'border-pink-400 text-pink-400 shadow-pink-500/50'
+    color: 'border-pink-500 text-pink-600 shadow-pink-200/50'
   },
   {
     id: Section.CONTACT,
     label: 'CONTACT',
     icon: 'https://cdn3d.iconscout.com/3d/premium/thumb/contacts-3d-icon-png-download-12842219.png',
-    color: 'border-orange-400 text-orange-400 shadow-orange-500/50'
+    color: 'border-orange-500 text-orange-600 shadow-orange-200/50'
   }
 ];
 
@@ -70,7 +70,7 @@ export const PROJECTS: Project[] = [
     description: 'A complete overhaul of an electronics brand.',
     longDescription: 'Leveraging AI-driven targeting and high-converting funnel design, we transformed a struggling electronics retailer into a market leader. The campaign focused on cross-channel synchronization and retention marketing.',
     image: 'https://picsum.photos/800/600?random=11',
-    color: 'text-cyan-400',
+    color: 'text-cyan-600',
     tags: ['E-COM', 'FB ADS', 'SEO']
   },
   {
@@ -80,7 +80,7 @@ export const PROJECTS: Project[] = [
     description: 'B2B Real Estate lead generation ecosystem.',
     longDescription: 'Developed a custom CRM-integrated lead capture system for luxury real estate firms. We utilized predictive analytics to identify high-intent buyers before they hit the general market.',
     image: 'https://picsum.photos/800/600?random=22',
-    color: 'text-indigo-400',
+    color: 'text-indigo-600',
     tags: ['B2B', 'LINKEDIN', 'CRM']
   },
   {
@@ -90,7 +90,7 @@ export const PROJECTS: Project[] = [
     description: 'International brand launch for a tech startup.',
     longDescription: 'Created a futuristic visual identity and digital presence for an aerospace startup. The launch campaign trended globally on LinkedIn and X for three consecutive days.',
     image: 'https://picsum.photos/800/600?random=33',
-    color: 'text-emerald-400',
+    color: 'text-emerald-600',
     tags: ['BRANDING', 'VIRAL', 'UX']
   }
 ];
