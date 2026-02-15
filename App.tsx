@@ -12,7 +12,7 @@ import {
   deleteDoc,
   updateDoc,
   serverTimestamp, 
-  onSnapshot,
+  onSnapshot, 
   query, 
   orderBy 
 } from 'firebase/firestore';
@@ -20,6 +20,7 @@ import {
 const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<Section>(Section.NONE);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [activeGalleryIndex, setActiveGalleryIndex] = useState(0);
   const [selectedService, setSelectedService] = useState<AppointmentService | null>(null);
   
   const [isAdminMode, setIsAdminMode] = useState(false);
@@ -51,9 +52,29 @@ const App: React.FC = () => {
 
   const [contactForm, setContactForm] = useState({ name: '', email: '', message: '' });
   const [formState, setFormState] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  
+  const [clientName, setClientName] = useState('');
+  const [clientWhatsApp, setClientWhatsApp] = useState('');
   const [appointmentDate, setAppointmentDate] = useState('');
   const [appointmentTime, setAppointmentTime] = useState('');
   const [apptState, setApptState] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+
+  const [availableDates, setAvailableDates] = useState<{date: string, day: string, num: string}[]>([]);
+
+  useEffect(() => {
+    const dates = [];
+    const today = new Date();
+    for (let i = 1; i <= 14; i++) {
+      const next = new Date(today);
+      next.setDate(today.getDate() + i);
+      dates.push({
+        date: next.toISOString().split('T')[0],
+        day: next.toLocaleDateString('en-US', { weekday: 'short' }),
+        num: next.getDate().toString()
+      });
+    }
+    setAvailableDates(dates);
+  }, []);
 
   useEffect(() => {
     const unsubExp = onSnapshot(query(collection(db, "experiences"), orderBy("period", "desc")), (snap) => {
@@ -82,6 +103,11 @@ const App: React.FC = () => {
     setSelectedService(null);
     setFormState('idle');
     setApptState('idle');
+    setAppointmentDate('');
+    setAppointmentTime('');
+    setClientName('');
+    setClientWhatsApp('');
+    setActiveGalleryIndex(0);
   };
 
   const handleAdminLogin = (e: React.FormEvent) => {
@@ -96,13 +122,15 @@ const App: React.FC = () => {
   };
 
   const handleAppointmentSubmit = async () => {
-    if (!selectedService || !appointmentDate || !appointmentTime) {
-      alert("Selection Required: Please provide service, date, and time.");
+    if (!selectedService || !appointmentDate || !appointmentTime || !clientName || !clientWhatsApp) {
+      alert("Missing Parameters: Please provide your name, WhatsApp, service, date, and time.");
       return;
     }
     setApptState('sending');
     try {
       await addDoc(collection(db, "appointments"), {
+        clientName,
+        clientWhatsApp,
         service: selectedService.name,
         date: appointmentDate,
         time: appointmentTime,
@@ -128,6 +156,18 @@ const App: React.FC = () => {
       setContactForm({ name: '', email: '', message: '' });
     } catch (error) {
       setFormState('error');
+    }
+  };
+
+  const nextImage = () => {
+    if (selectedProject) {
+      setActiveGalleryIndex((prev) => (prev + 1) % selectedProject.gallery.length);
+    }
+  };
+
+  const prevImage = () => {
+    if (selectedProject) {
+      setActiveGalleryIndex((prev) => (prev - 1 + selectedProject.gallery.length) % selectedProject.gallery.length);
     }
   };
 
@@ -212,7 +252,7 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Popups */}
+      {/* About Popup */}
       <SectionModal section={Section.ABOUT} isOpen={activeSection === Section.ABOUT} onClose={closeSection}>
         <div className="flex flex-col lg:flex-row gap-8 lg:gap-14 items-center lg:items-start">
           <div className="w-full lg:w-2/5 max-w-[360px]">
@@ -235,6 +275,7 @@ const App: React.FC = () => {
         </div>
       </SectionModal>
 
+      {/* Working Popup */}
       <SectionModal section={Section.WORKING} isOpen={activeSection === Section.WORKING} onClose={closeSection}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
           {dynamicExperiences.map((exp) => (
@@ -257,79 +298,297 @@ const App: React.FC = () => {
         </div>
       </SectionModal>
 
+      {/* Enhanced Portfolio Popup with Detail View */}
       <SectionModal section={Section.PORTFOLIO} isOpen={activeSection === Section.PORTFOLIO} onClose={closeSection}>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-10">
-          {dynamicProjects.map((proj) => (
-            <div key={proj.id} className="group bg-white/60 rounded-[2rem] overflow-hidden border border-white shadow-sm transition-all hover:shadow-xl flex flex-col">
-              <div className="aspect-video w-full overflow-hidden relative">
-                <img src={proj.image} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                <div className="absolute top-4 left-4">
-                  <span className="bg-slate-900/80 backdrop-blur-md text-white text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest">{proj.stats}</span>
-                </div>
+        {selectedProject ? (
+          // Detail View
+          <div className="animate-modal flex flex-col gap-10">
+            {/* Back Button */}
+            <button 
+              onClick={() => { setSelectedProject(null); setActiveGalleryIndex(0); }}
+              className="group flex items-center gap-3 self-start text-xs lg:text-lg font-black text-blue-500 uppercase tracking-widest"
+            >
+              <div className="w-8 h-8 lg:w-12 lg:h-12 rounded-full border border-blue-200 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-all shadow-sm">
+                <svg className="w-4 h-4 lg:w-6 lg:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" />
+                </svg>
               </div>
-              <div className="p-6 lg:p-10 text-left space-y-3 flex-1 flex flex-col">
-                <h4 className="text-xl lg:text-3xl font-black text-slate-900 tracking-tight uppercase leading-tight">{proj.title}</h4>
-                <p className="text-slate-500 text-xs lg:text-lg font-medium leading-relaxed line-clamp-2">{proj.description}</p>
-                <div className="flex flex-wrap gap-2 pt-2 mt-auto">
-                  {proj.tags?.map(tag => (
-                    <span key={tag} className="text-[9px] font-bold bg-slate-50 border border-slate-100 px-3 py-1 rounded-full text-slate-400 uppercase tracking-widest">{tag}</span>
+              BACK TO PORTFOLIO
+            </button>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16">
+              {/* Image Gallery Column */}
+              <div className="space-y-6">
+                <div className="relative aspect-[4/3] rounded-[2.5rem] overflow-hidden shadow-2xl bg-slate-900 group">
+                  <img 
+                    src={selectedProject.gallery[activeGalleryIndex]} 
+                    className="w-full h-full object-cover transition-transform duration-700" 
+                    alt={selectedProject.title}
+                  />
+                  
+                  {/* Navigation Arrows */}
+                  <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 flex justify-between pointer-events-none">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); prevImage(); }}
+                      className="pointer-events-auto w-10 h-10 lg:w-14 lg:h-14 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 text-white flex items-center justify-center hover:bg-white/40 active:scale-90 transition-all shadow-lg"
+                    >
+                      <svg className="w-6 h-6 lg:w-8 lg:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); nextImage(); }}
+                      className="pointer-events-auto w-10 h-10 lg:w-14 lg:h-14 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 text-white flex items-center justify-center hover:bg-white/40 active:scale-90 transition-all shadow-lg"
+                    >
+                      <svg className="w-6 h-6 lg:w-8 lg:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Indicators */}
+                  <div className="absolute bottom-6 inset-x-0 flex justify-center gap-2">
+                    {selectedProject.gallery.map((_, i) => (
+                      <div 
+                        key={i} 
+                        className={`h-1.5 lg:h-2 rounded-full transition-all duration-300 ${activeGalleryIndex === i ? 'w-8 bg-blue-500' : 'w-2 bg-white/50'}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Thumbnails */}
+                <div className="grid grid-cols-4 gap-3">
+                  {selectedProject.gallery.map((img, i) => (
+                    <button 
+                      key={i}
+                      onClick={() => setActiveGalleryIndex(i)}
+                      className={`aspect-square rounded-xl overflow-hidden border-2 transition-all ${activeGalleryIndex === i ? 'border-blue-500 scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                    >
+                      <img src={img} className="w-full h-full object-cover" />
+                    </button>
                   ))}
                 </div>
               </div>
+
+              {/* Information Column */}
+              <div className="text-left space-y-8">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {selectedProject.tags.map(tag => (
+                      <span key={tag} className="text-[10px] font-black bg-blue-50 text-blue-500 border border-blue-100 px-4 py-1.5 rounded-full uppercase tracking-widest">{tag}</span>
+                    ))}
+                  </div>
+                  <h3 className="text-3xl lg:text-7xl font-black text-slate-900 tracking-tighter uppercase leading-none">{selectedProject.title}</h3>
+                  <div className="h-1.5 w-24 bg-blue-500 rounded-full mt-4" />
+                </div>
+
+                <div className="bg-slate-50 p-6 lg:p-10 rounded-[2rem] border border-slate-100 space-y-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-500 flex items-center justify-center text-2xl text-white shadow-lg shadow-blue-200">📊</div>
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 tracking-[0.2em] uppercase">Impact Metric</p>
+                      <p className="text-xl lg:text-3xl font-black text-slate-900">{selectedProject.stats}</p>
+                    </div>
+                  </div>
+                  <p className="text-sm lg:text-2xl font-medium text-slate-500 leading-relaxed italic">"{selectedProject.description}"</p>
+                </div>
+
+                <div className="space-y-6">
+                  <p className="text-[10px] lg:text-xs font-black text-slate-400 tracking-[0.4em] uppercase">PROJECT OVERVIEW</p>
+                  <p className="text-base lg:text-2xl font-medium text-slate-600 leading-relaxed">
+                    {selectedProject.longDescription}
+                  </p>
+                </div>
+
+                <div className="pt-6">
+                  <button 
+                    onClick={() => setActiveSection(Section.CONTACT)}
+                    className="w-full py-6 lg:py-10 rounded-2xl bg-slate-900 text-white font-black tracking-[0.3em] uppercase text-xs lg:text-2xl hover:bg-blue-600 transition-all shadow-xl hover:-translate-y-1"
+                  >
+                    INQUIRE ABOUT THIS FRAMEWORK
+                  </button>
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
+          </div>
+        ) : (
+          // Grid View
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-10">
+            {dynamicProjects.map((proj) => (
+              <button 
+                key={proj.id} 
+                onClick={() => { setSelectedProject(proj); setActiveGalleryIndex(0); }}
+                className="group bg-white/60 rounded-[2.5rem] overflow-hidden border border-white shadow-sm transition-all hover:shadow-2xl hover:-translate-y-2 flex flex-col text-left"
+              >
+                <div className="aspect-[4/3] w-full overflow-hidden relative">
+                  <img src={proj.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                  <div className="absolute top-5 left-5">
+                    <span className="bg-slate-900/80 backdrop-blur-md text-white text-[9px] font-black px-4 py-2 rounded-full uppercase tracking-widest">{proj.stats}</span>
+                  </div>
+                  <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/20 transition-all duration-500 flex items-center justify-center">
+                    <div className="w-14 h-14 rounded-full bg-white text-blue-500 flex items-center justify-center opacity-0 group-hover:opacity-100 scale-50 group-hover:scale-100 transition-all duration-500 shadow-xl">
+                      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-8 lg:p-10 space-y-4 flex-1 flex flex-col">
+                  <div className="flex flex-wrap gap-2">
+                    {proj.tags?.slice(0, 2).map(tag => (
+                      <span key={tag} className="text-[8px] font-black bg-slate-100 text-slate-400 px-3 py-1 rounded-full uppercase">{tag}</span>
+                    ))}
+                  </div>
+                  <h4 className="text-xl lg:text-3xl font-black text-slate-900 tracking-tight uppercase leading-tight group-hover:text-blue-500 transition-colors">{proj.title}</h4>
+                  <p className="text-slate-500 text-xs lg:text-lg font-medium leading-relaxed line-clamp-2">{proj.description}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </SectionModal>
 
+      {/* Smart Appointment Popup */}
       <SectionModal section={Section.APPOINTMENT} isOpen={activeSection === Section.APPOINTMENT} onClose={closeSection}>
-         <div className="flex flex-col lg:flex-row gap-8 lg:gap-16">
-            <div className="lg:w-1/3 text-center lg:text-left space-y-6">
-               <div className="bg-rose-50/50 p-8 lg:p-12 rounded-3xl border border-rose-100">
-                  <div className="text-6xl lg:text-8xl mb-6">📅</div>
-                  <h4 className="text-3xl lg:text-6xl font-black text-slate-900 uppercase leading-none tracking-tighter">THE <span className="text-rose-500">AUDIT</span></h4>
-                  <p className="text-[10px] lg:text-lg font-bold tracking-widest text-slate-400 mt-4 uppercase">Lock in your strategic growth synchronization slot.</p>
-               </div>
-            </div>
-            <div className="flex-1 space-y-8">
-               {apptState === 'success' ? (
-                 <div className="py-16 text-center space-y-8 animate-modal">
-                    <div className="text-7xl lg:text-9xl">✔️</div>
-                    <h4 className="text-2xl lg:text-5xl font-black text-slate-900 uppercase tracking-tighter">Session Logged</h4>
-                    <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">Architect will contact you shortly.</p>
-                    <button onClick={() => setApptState('idle')} className="px-8 py-3 bg-rose-500 text-white font-black uppercase text-xs tracking-widest rounded-xl">Refresh Portal</button>
+         <div className="max-w-5xl mx-auto">
+            {apptState === 'success' ? (
+              <div className="py-20 text-center space-y-10 animate-modal bg-emerald-50/40 rounded-[3rem] border border-emerald-100">
+                 <div className="text-8xl lg:text-[10rem] animate-pulse">🚀</div>
+                 <div className="space-y-4">
+                   <h4 className="text-3xl lg:text-6xl font-black text-slate-900 uppercase tracking-tighter">Transmission Confirmed</h4>
+                   <p className="text-slate-500 text-sm lg:text-xl font-medium max-w-md mx-auto px-6">The architectural handshake has been logged. Stand by for WhatsApp confirmation.</p>
                  </div>
-               ) : (
-                 <div className="space-y-8">
-                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {dynamicServices.map(s => (
-                        <button key={s.id} onClick={() => setSelectedService(s)} className={`p-6 rounded-2xl border-2 transition-all flex items-center gap-5 text-left shadow-sm ${selectedService?.id === s.id ? 'border-rose-400 bg-rose-50/80 shadow-rose-100' : 'border-white bg-white hover:bg-slate-50'}`}>
-                           <span className="text-3xl lg:text-4xl">{s.icon}</span>
-                           <div>
-                             <p className="text-sm lg:text-xl font-black text-slate-900 uppercase leading-tight">{s.name}</p>
-                             <span className="text-[9px] lg:text-xs font-bold text-slate-400 uppercase tracking-widest">{s.duration} • {s.price}</span>
-                           </div>
-                        </button>
-                      ))}
+                 <button onClick={() => setApptState('idle')} className="px-12 py-5 bg-emerald-500 text-white font-black uppercase text-xs lg:text-lg tracking-widest rounded-full shadow-lg hover:bg-emerald-600 transition-all">Start New Audit</button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+                
+                {/* Protocol Selection (Step 1) */}
+                <div className="lg:col-span-4 space-y-8">
+                   <div className="bg-rose-500 p-8 lg:p-10 rounded-[2.5rem] text-white shadow-xl space-y-4">
+                      <h4 className="text-2xl font-black uppercase tracking-tighter leading-none">Schedule <br/>Audit</h4>
+                      <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest">Protocol Sync Engine v5.2</p>
+                      
+                      {selectedService && (
+                        <div className="pt-6 border-t border-white/20">
+                          <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">TARGETED ACTION</p>
+                          <p className="text-xl font-black uppercase leading-tight">{selectedService.name}</p>
+                        </div>
+                      )}
                    </div>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                     <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-400 tracking-[0.3em] uppercase ml-1">DATE SELECTION</label>
-                       <input type="date" className="w-full bg-white border border-slate-100 rounded-xl p-5 font-black text-slate-800 outline-none focus:border-rose-500 text-sm lg:text-xl" onChange={e => setAppointmentDate(e.target.value)} />
-                     </div>
-                     <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-400 tracking-[0.3em] uppercase ml-1">TIME SLOT</label>
-                       <div className="grid grid-cols-3 gap-2">
-                          {['09:00', '12:00', '15:00', '18:00', '21:00'].map(t => <button key={t} onClick={() => setAppointmentTime(t)} className={`py-4 rounded-xl border font-black text-[10px] lg:text-sm uppercase transition-all ${appointmentTime === t ? 'bg-rose-500 border-rose-500 text-white shadow-md' : 'bg-white border-slate-100 text-slate-400 hover:bg-slate-50'}`}>{t}</button>)}
-                       </div>
-                     </div>
+
+                   <div className="space-y-4">
+                      <p className="text-[10px] font-black text-slate-400 tracking-[0.4em] uppercase ml-2">1. SELECT ACTION</p>
+                      <div className="space-y-3">
+                        {dynamicServices.map(s => (
+                          <button 
+                            key={s.id} 
+                            onClick={() => setSelectedService(s)} 
+                            className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center gap-4 text-left ${selectedService?.id === s.id ? 'border-rose-400 bg-rose-50/50 shadow-md' : 'border-slate-50 bg-white hover:border-rose-200'}`}
+                          >
+                            <span className="text-2xl w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-50">{s.icon}</span>
+                            <div className="flex-1">
+                              <p className="text-[11px] font-black text-slate-900 uppercase leading-none">{s.name}</p>
+                              <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">{s.duration} • {s.price}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
                    </div>
-                   <button onClick={handleAppointmentSubmit} className="w-full py-6 lg:py-10 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-black tracking-[0.3em] lg:tracking-[0.6em] uppercase text-xs lg:text-2xl shadow-xl hover:-translate-y-1 transition-all">ESTABLISH CHANNEL</button>
-                 </div>
-               )}
-            </div>
+                </div>
+
+                {/* Identity & Calendar (Steps 2 & 3) */}
+                <div className="lg:col-span-8 space-y-10">
+                   
+                   {/* Step 2: Identity Inputs */}
+                   <div className="bg-white p-8 lg:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8">
+                      <p className="text-[10px] font-black text-slate-400 tracking-[0.4em] uppercase">2. AUDIT IDENTITY</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black text-slate-400 tracking-widest uppercase ml-1">YOUR NAME</label>
+                          <input 
+                            required
+                            type="text" 
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-800 font-black text-sm lg:text-lg focus:border-rose-400 outline-none transition-all"
+                            placeholder="FULL NAME"
+                            value={clientName}
+                            onChange={e => setClientName(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black text-slate-400 tracking-widest uppercase ml-1">WHATSAPP NUMBER</label>
+                          <input 
+                            required
+                            type="tel" 
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-800 font-black text-sm lg:text-lg focus:border-rose-400 outline-none transition-all"
+                            placeholder="+880 1XXX-XXXXXX"
+                            value={clientWhatsApp}
+                            onChange={e => setClientWhatsApp(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                   </div>
+
+                   {/* Step 3: Smart Calendar Grid */}
+                   <div className="bg-white p-8 lg:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8">
+                      <div className="flex justify-between items-center">
+                        <p className="text-[10px] font-black text-slate-400 tracking-[0.4em] uppercase">3. CALENDAR HUB</p>
+                        {appointmentDate && <span className="text-[9px] font-black text-rose-500 uppercase">Selected: {appointmentDate}</span>}
+                      </div>
+
+                      <div className="flex overflow-x-auto pb-4 gap-3 no-scrollbar scroll-smooth">
+                        {availableDates.map((d) => (
+                          <button
+                            key={d.date}
+                            onClick={() => setAppointmentDate(d.date)}
+                            className={`flex-shrink-0 w-16 h-20 sm:w-20 sm:h-24 rounded-2xl flex flex-col items-center justify-center gap-1 border-2 transition-all ${appointmentDate === d.date ? 'border-rose-500 bg-rose-500 text-white shadow-lg scale-105' : 'border-slate-100 bg-slate-50 text-slate-400 hover:border-rose-200 hover:text-rose-500'}`}
+                          >
+                            <span className={`text-[9px] font-black uppercase tracking-widest ${appointmentDate === d.date ? 'text-white' : 'text-slate-400'}`}>{d.day}</span>
+                            <span className="text-xl sm:text-3xl font-black">{d.num}</span>
+                            {appointmentDate === d.date && <div className="w-1 h-1 bg-white rounded-full mt-1 animate-pulse" />}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Time Slots */}
+                      <div className="space-y-6 pt-4 border-t border-slate-50">
+                         <div className="flex justify-between items-center px-1">
+                           <p className="text-[10px] font-black text-slate-400 tracking-[0.4em] uppercase">4. SYNC WINDOW</p>
+                           {appointmentTime && <span className="text-[9px] font-black text-rose-500 uppercase">SLOT: {appointmentTime}</span>}
+                         </div>
+                         <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+                            {['09:00', '10:30', '12:00', '13:30', '15:00', '16:30', '18:00', '19:30', '21:00', '22:30'].map(t => (
+                              <button 
+                                key={t} 
+                                onClick={() => setAppointmentTime(t)} 
+                                className={`py-3 rounded-lg border-2 font-black text-[9px] sm:text-xs uppercase transition-all ${appointmentTime === t ? 'bg-rose-500 border-rose-500 text-white shadow-md' : 'bg-slate-50 border-slate-50 text-slate-400 hover:border-rose-200 hover:text-rose-400'}`}
+                              >
+                                {t}
+                              </button>
+                            ))}
+                         </div>
+                      </div>
+
+                      {/* Action */}
+                      <div className="pt-8">
+                         <button 
+                           disabled={!selectedService || !appointmentDate || !appointmentTime || !clientName || !clientWhatsApp}
+                           onClick={handleAppointmentSubmit}
+                           className={`w-full py-6 lg:py-8 rounded-2xl font-black tracking-[0.4em] uppercase text-xs lg:text-xl transition-all shadow-xl flex items-center justify-center gap-4 ${(!selectedService || !appointmentDate || !appointmentTime || !clientName || !clientWhatsApp) ? 'bg-slate-100 text-slate-300' : 'bg-gradient-to-r from-rose-500 to-pink-500 text-white hover:scale-[1.01] active:scale-95'}`}
+                         >
+                           {apptState === 'sending' ? 'TRANSMITTING...' : 'ESTABLISH ARCHITECTURAL SYNC'}
+                         </button>
+                         <p className="text-[8px] font-bold text-slate-300 text-center mt-6 uppercase tracking-[0.2em]">handshake verified by secure cloud architecture</p>
+                      </div>
+                   </div>
+                </div>
+              </div>
+            )}
          </div>
       </SectionModal>
 
+      {/* Contact Popup */}
       <SectionModal section={Section.CONTACT} isOpen={activeSection === Section.CONTACT} onClose={closeSection}>
          <div className="flex flex-col lg:flex-row gap-10 lg:gap-14">
             <div className="lg:w-1/3 text-left space-y-8">
