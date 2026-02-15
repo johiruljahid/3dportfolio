@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Section, AdminSection, Project, AppointmentService, Experience, ContactInfo } from './types';
 import { MENU_ITEMS, EXPERIENCES, PROJECTS, SERVICES } from './constants';
 import SectionModal from './components/SectionModal';
-import { db } from './firebase';
+import { db, storage } from './firebase';
 import { 
   collection, 
   addDoc, 
@@ -16,17 +16,22 @@ import {
   query, 
   orderBy 
 } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const App: React.FC = () => {
+  // Navigation & UI State
   const [activeSection, setActiveSection] = useState<Section>(Section.NONE);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [activeGalleryIndex, setActiveGalleryIndex] = useState(0);
   const [selectedService, setSelectedService] = useState<AppointmentService | null>(null);
   
+  // Admin Core State
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [activeAdminTab, setActiveAdminTab] = useState<AdminSection>(AdminSection.ABOUT);
   const [showLogin, setShowLogin] = useState(false);
   const [accessCode, setAccessCode] = useState('');
   
+  // Global Site Data State
   const [profileImage, setProfileImage] = useState("https://picsum.photos/600/600?seed=shamim");
   const [dynamicAbout, setDynamicAbout] = useState({
     title: "Designing Digital Ecosystems That Scale Beyond Boundaries.",
@@ -43,6 +48,8 @@ const App: React.FC = () => {
   const [dynamicExperiences, setDynamicExperiences] = useState<Experience[]>([]);
   const [dynamicProjects, setDynamicProjects] = useState<Project[]>([]);
   const [dynamicServices, setDynamicServices] = useState<AppointmentService[]>(SERVICES);
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [messages, setMessages] = useState<any[]>([]);
   const [contactInfo, setContactInfo] = useState<ContactInfo>({
     email: 'hello@shamimahmed.com',
     linkedin: 'shamim.digital',
@@ -50,18 +57,22 @@ const App: React.FC = () => {
     phone: '+880 1XXX-XXXXXX'
   });
 
+  // Form States
   const [contactForm, setContactForm] = useState({ name: '', email: '', message: '' });
   const [formState, setFormState] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
-  
   const [clientName, setClientName] = useState('');
   const [clientWhatsApp, setClientWhatsApp] = useState('');
   const [appointmentDate, setAppointmentDate] = useState('');
   const [appointmentTime, setAppointmentTime] = useState('');
   const [apptState, setApptState] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
-
   const [availableDates, setAvailableDates] = useState<{date: string, day: string, num: string}[]>([]);
 
+  // Admin Specific UI State
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
   useEffect(() => {
+    // Sync UI Data
     const dates = [];
     const today = new Date();
     for (let i = 1; i <= 14; i++) {
@@ -74,17 +85,20 @@ const App: React.FC = () => {
       });
     }
     setAvailableDates(dates);
-  }, []);
 
-  useEffect(() => {
+    // Firestore Listeners
     const unsubExp = onSnapshot(query(collection(db, "experiences"), orderBy("period", "desc")), (snap) => {
       setDynamicExperiences(snap.docs.length > 0 ? snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Experience)) : EXPERIENCES);
     });
-
     const unsubProj = onSnapshot(query(collection(db, "projects")), (snap) => {
       setDynamicProjects(snap.docs.length > 0 ? snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)) : PROJECTS);
     });
-
+    const unsubAppts = onSnapshot(query(collection(db, "appointments"), orderBy("timestamp", "desc")), (snap) => {
+      setAppointments(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    const unsubMsgs = onSnapshot(query(collection(db, "messages"), orderBy("timestamp", "desc")), (snap) => {
+      setMessages(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
     const unsubConfig = onSnapshot(doc(db, "siteConfig", "global"), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -94,7 +108,7 @@ const App: React.FC = () => {
       }
     });
 
-    return () => { unsubExp(); unsubProj(); unsubConfig(); };
+    return () => { unsubExp(); unsubProj(); unsubAppts(); unsubMsgs(); unsubConfig(); };
   }, []);
 
   const closeSection = () => {
@@ -118,6 +132,94 @@ const App: React.FC = () => {
       setAccessCode('');
     } else {
       alert('Security Breach: Token Invalid');
+    }
+  };
+
+  // --- Image Upload Logic ---
+  const uploadImage = async (file: File, folder: string): Promise<string> => {
+    setIsUploading(true);
+    try {
+      const storageRef = ref(storage, `${folder}/${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snapshot.ref);
+      return url;
+    } catch (error) {
+      console.error("Upload failed", error);
+      alert("System Error: Media Upload Failed.");
+      throw error;
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleProfileImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const url = await uploadImage(e.target.files[0], 'profiles');
+      setProfileImage(url);
+    }
+  };
+
+  const handleProjectImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (editingProject && e.target.files && e.target.files[0]) {
+      const url = await uploadImage(e.target.files[0], 'projects');
+      setEditingProject({...editingProject, image: url});
+    }
+  };
+
+  const handleGalleryImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (editingProject && e.target.files && e.target.files[0]) {
+      const url = await uploadImage(e.target.files[0], 'gallery');
+      setEditingProject({...editingProject, gallery: [...editingProject.gallery, url]});
+    }
+  };
+
+  // --- Firestore CRUD Helpers ---
+  const saveSiteConfig = async (newData: any) => {
+    try {
+      await setDoc(doc(db, "siteConfig", "global"), newData, { merge: true });
+      alert("System Core Updated Successfully.");
+    } catch (err) {
+      alert("Transmission Error: Update Failed.");
+    }
+  };
+
+  const addProject = async () => {
+    const p: Partial<Project> = {
+      title: 'NEW PROJECT MODULE',
+      stats: '0% GROWTH',
+      description: 'Brief project mission statement...',
+      longDescription: 'Extended technical documentation of the project framework...',
+      image: 'https://picsum.photos/800/600',
+      gallery: ['https://picsum.photos/800/600'],
+      color: 'text-blue-500',
+      tags: ['NEW', 'MODULE']
+    };
+    const docRef = await addDoc(collection(db, "projects"), p);
+    // Open editor immediately for new project
+    setEditingProject({ id: docRef.id, ...p } as Project);
+  };
+
+  const deleteItem = async (col: string, id: string) => {
+    if (window.confirm("CRITICAL WARNING: This action will permanently wipe this record from the central Firestore database. Proceed?")) {
+      try {
+        await deleteDoc(doc(db, col, id));
+        if (editingProject && editingProject.id === id) setEditingProject(null);
+        alert("Record Wiped Successfully.");
+      } catch (err) {
+        alert("Deletion Error: Persistence Layer Rejected Command.");
+      }
+    }
+  };
+
+  const saveProjectEdit = async () => {
+    if (!editingProject) return;
+    const { id, ...data } = editingProject;
+    try {
+      await updateDoc(doc(db, "projects", id), data);
+      setEditingProject(null);
+      alert("Project Vault Synced.");
+    } catch (err) {
+      alert("Sync Error: Failed to commit changes to database.");
     }
   };
 
@@ -173,38 +275,380 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen relative flex flex-col items-center justify-start lg:justify-center p-4 sm:p-10 bg-[#fbfcfd] overflow-x-hidden">
-      {/* Admin Trigger */}
-      <button onClick={() => setShowLogin(true)} className="fixed top-8 right-8 w-12 h-12 rounded-full flex items-center justify-center z-[50] opacity-10 hover:opacity-100 transition-opacity">
-        <div className="w-2.5 h-2.5 bg-slate-400 rounded-full"></div>
-      </button>
+      
+      {/* Admin Command Access */}
+      {!isAdminMode && (
+        <button onClick={() => setShowLogin(true)} className="fixed top-8 right-8 w-12 h-12 rounded-full flex items-center justify-center z-[50] opacity-5 hover:opacity-100 transition-opacity">
+          <div className="w-2.5 h-2.5 bg-slate-400 rounded-full"></div>
+        </button>
+      )}
 
+      {/* Admin Login Portal */}
       {showLogin && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-xl">
-           <form onSubmit={handleAdminLogin} className="w-full max-w-md bg-white p-10 lg:p-12 rounded-[2rem] border border-white shadow-2xl space-y-8 animate-modal">
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-slate-900/90 backdrop-blur-2xl">
+           <form onSubmit={handleAdminLogin} className="w-full max-w-md bg-white p-12 rounded-[3rem] border border-white shadow-2xl space-y-8 animate-modal">
               <div className="text-center space-y-2">
-                <h3 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Command Key</h3>
-                <p className="text-xs text-slate-400 font-bold tracking-widest uppercase">Identity Verification Required</p>
+                <div className="w-16 h-16 bg-slate-100 rounded-2xl mx-auto flex items-center justify-center text-3xl mb-4">🔑</div>
+                <h3 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">NEXUS ACCESS</h3>
+                <p className="text-[10px] text-slate-400 font-bold tracking-[0.4em] uppercase">Security Protocol Required</p>
               </div>
-              <input autoFocus type="password" placeholder="TOKEN" className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-5 text-center text-slate-900 text-2xl font-black outline-none focus:border-indigo-500" value={accessCode} onChange={e => setAccessCode(e.target.value)} />
-              <button type="submit" className="w-full py-5 rounded-xl bg-indigo-600 text-white font-black uppercase tracking-widest text-sm hover:bg-indigo-700 transition-colors">AUTHORIZE</button>
-              <button type="button" onClick={() => setShowLogin(false)} className="w-full text-slate-400 font-bold text-xs uppercase hover:text-slate-600">Secure Exit</button>
+              <input autoFocus type="password" placeholder="ENTER MASTER TOKEN" className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-6 text-center text-slate-900 text-3xl font-black outline-none focus:border-indigo-500" value={accessCode} onChange={e => setAccessCode(e.target.value)} />
+              <button type="submit" className="w-full py-6 rounded-2xl bg-slate-900 text-white font-black uppercase tracking-[0.3em] text-sm hover:bg-slate-800 transition-all">AUTHENTICATE</button>
+              <button type="button" onClick={() => setShowLogin(false)} className="w-full text-slate-400 font-bold text-xs uppercase tracking-widest hover:text-slate-600 text-center">Close Link</button>
            </form>
         </div>
       )}
 
+      {/* Admin Command Center */}
       {isAdminMode && (
-        <div className="fixed inset-0 z-[1100] bg-white flex flex-col p-6 sm:p-10">
-          <div className="max-w-6xl mx-auto w-full flex justify-between items-center mb-10">
-            <h2 className="text-2xl font-black tracking-tighter">NEXUS_ADMIN_CORE</h2>
-            <button onClick={() => setIsAdminMode(false)} className="px-6 py-2 bg-red-500 text-white text-xs font-black rounded-lg uppercase">Terminate</button>
+        <div className="fixed inset-0 z-[1500] bg-white flex flex-col lg:flex-row overflow-hidden animate-in fade-in zoom-in-95 duration-500">
+          
+          {/* Project Editor Modal Inside Admin */}
+          {editingProject && (
+            <div className="fixed inset-0 z-[1600] bg-slate-900/80 backdrop-blur-xl flex items-center justify-center p-4 lg:p-10">
+              <div className="bg-white w-full max-w-5xl max-h-full overflow-y-auto rounded-[3rem] p-8 lg:p-14 space-y-10 shadow-2xl animate-modal relative">
+                {isUploading && (
+                  <div className="absolute inset-0 bg-white/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center space-y-4">
+                    <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-xs font-black uppercase tracking-[0.3em] text-indigo-500">Uploading to Vault...</p>
+                  </div>
+                )}
+                
+                <div className="flex justify-between items-center">
+                  <h4 className="text-2xl lg:text-4xl font-black uppercase tracking-tighter">Edit Project Framework</h4>
+                  <button onClick={() => setEditingProject(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                    <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Core Title</label>
+                      <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-bold" value={editingProject.title} onChange={e => setEditingProject({...editingProject, title: e.target.value})} />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Impact Metric (Stats)</label>
+                      <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-bold" value={editingProject.stats} onChange={e => setEditingProject({...editingProject, stats: e.target.value})} />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Main Preview Image</label>
+                      <div className="flex gap-4">
+                        <div className="w-24 h-16 bg-slate-100 rounded-xl overflow-hidden border border-slate-200">
+                          <img src={editingProject.image} className="w-full h-full object-cover" alt="Preview" />
+                        </div>
+                        <div className="flex-1 space-y-2">
+                          <input className="w-full p-2 bg-slate-50 border border-slate-100 rounded-lg font-medium text-[10px]" value={editingProject.image} onChange={e => setEditingProject({...editingProject, image: e.target.value})} placeholder="Direct Image URL" />
+                          <label className="block w-full text-center py-2 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-indigo-100 transition-colors">
+                            Upload from Device
+                            <input type="file" className="hidden" accept="image/*" onChange={handleProjectImageUpload} />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Tags (Comma Separated)</label>
+                      <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-bold" value={editingProject.tags.join(', ')} onChange={e => setEditingProject({...editingProject, tags: e.target.value.split(',').map(s => s.trim())})} />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Narrative Description</label>
+                      <textarea rows={3} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-medium" value={editingProject.description} onChange={e => setEditingProject({...editingProject, description: e.target.value})} />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Technical Documentation (Long Desc)</label>
+                      <textarea rows={6} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-medium" value={editingProject.longDescription} onChange={e => setEditingProject({...editingProject, longDescription: e.target.value})} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Gallery Manager */}
+                <div className="space-y-6">
+                  <div className="flex justify-between items-center">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Image Gallery Vault</p>
+                    <label className="text-blue-500 font-black text-xs uppercase cursor-pointer hover:underline">
+                      + Direct Upload Image
+                      <input type="file" className="hidden" accept="image/*" onChange={handleGalleryImageUpload} />
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {editingProject.gallery.map((url, idx) => (
+                      <div key={idx} className="relative bg-slate-50 p-4 rounded-2xl border border-slate-100 group">
+                        <input className="w-full bg-transparent border-none font-medium text-[9px] text-slate-400 focus:ring-0 mb-2" value={url} onChange={e => {
+                          const newGallery = [...editingProject.gallery];
+                          newGallery[idx] = e.target.value;
+                          setEditingProject({...editingProject, gallery: newGallery});
+                        }} />
+                        <button onClick={() => {
+                          const newGallery = editingProject.gallery.filter((_, i) => i !== idx);
+                          setEditingProject({...editingProject, gallery: newGallery});
+                        }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                        <img src={url} className="w-full h-32 object-cover rounded-xl border border-slate-200" alt="Preview" />
+                      </div>
+                    ))}
+                    {/* Manual Link Slot */}
+                    <button 
+                      onClick={() => setEditingProject({...editingProject, gallery: [...editingProject.gallery, 'https://']})}
+                      className="border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center p-6 text-slate-300 hover:text-blue-500 hover:border-blue-500 transition-all group"
+                    >
+                      <span className="text-2xl mb-2">🔗</span>
+                      <span className="text-[10px] font-black uppercase tracking-widest">Add Manual Link</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-4 pt-6">
+                  <button onClick={saveProjectEdit} className="flex-1 py-6 bg-slate-900 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-indigo-600 transition-all">SYNC PROJECT MODULE</button>
+                  <button onClick={() => deleteItem("projects", editingProject.id)} className="flex-1 py-6 bg-red-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-red-700 transition-all flex items-center justify-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    WIPE FROM DATABASE
+                  </button>
+                  <button onClick={() => setEditingProject(null)} className="px-10 py-6 bg-slate-100 text-slate-400 font-black uppercase tracking-widest rounded-2xl hover:bg-slate-200 transition-colors">Abort</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Sidebar Navigation */}
+          <div className="w-full lg:w-80 bg-slate-950 text-white flex flex-col border-r border-slate-800">
+            <div className="p-8 border-b border-slate-900">
+              <h2 className="text-xl font-black tracking-tighter text-indigo-400 uppercase leading-none">Command <br/><span className="text-white">Center</span></h2>
+              <p className="text-[9px] font-bold text-slate-500 tracking-[0.3em] uppercase mt-2">v5.0.4 ARCHITECT</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-2">
+              {[
+                { id: AdminSection.ABOUT, label: 'BIO-CORE', icon: '👤' },
+                { id: AdminSection.WORKING, label: 'EXPERIENCE LAB', icon: '💼' },
+                { id: AdminSection.PORTFOLIO, label: 'PROJECT VAULT', icon: '📁' },
+                { id: AdminSection.APPOINTMENT, label: 'SYNC REQUESTS', icon: '📅' },
+                { id: AdminSection.MESSAGES, label: 'COMM INBOX', icon: '✉️' },
+                { id: AdminSection.CONTACT_EDIT, label: 'ID ENTITY', icon: '🌐' },
+              ].map(tab => (
+                <button 
+                  key={tab.id}
+                  onClick={() => setActiveAdminTab(tab.id)}
+                  className={`w-full p-4 rounded-xl flex items-center gap-4 transition-all uppercase font-black text-[11px] tracking-widest ${activeAdminTab === tab.id ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-900 text-slate-400'}`}
+                >
+                  <span className="text-xl">{tab.icon}</span>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="p-6 border-t border-slate-900">
+               <button onClick={() => setIsAdminMode(false)} className="w-full py-4 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all">TERMINATE SESSION</button>
+            </div>
           </div>
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-300">
-             <div className="text-8xl mb-4">⚙️</div>
-             <p className="font-black tracking-[0.3em] uppercase">Control System Online</p>
+
+          {/* Main Dashboard Content */}
+          <div className="flex-1 overflow-y-auto bg-slate-50 p-6 lg:p-12 text-left">
+            
+            {/* Bio-Core (About) */}
+            {activeAdminTab === AdminSection.ABOUT && (
+              <div className="max-w-4xl space-y-10 animate-in fade-in slide-in-from-bottom-4 relative">
+                {isUploading && (
+                  <div className="absolute inset-0 bg-white/40 backdrop-blur-[2px] z-50 flex items-center justify-center">
+                    <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                )}
+                <div className="flex justify-between items-end">
+                  <h3 className="text-4xl font-black tracking-tighter uppercase">Bio-Core Management</h3>
+                </div>
+                <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-10">
+                  <div className="flex flex-col md:flex-row gap-10 items-start">
+                    <div className="w-full md:w-1/3 space-y-4">
+                      <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Profile Identity Media</label>
+                      <div className="aspect-square w-full rounded-3xl overflow-hidden border-4 border-slate-50 shadow-inner group relative bg-slate-100">
+                        <img src={profileImage} className="w-full h-full object-cover" alt="Profile" />
+                        <label className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer">
+                          <span className="text-white font-black text-[10px] uppercase">Upload Direct</span>
+                          <input type="file" className="hidden" accept="image/*" onChange={handleProfileImageUpload} />
+                        </label>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Manual Link Sync</p>
+                        <input 
+                          className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold" 
+                          placeholder="PASTE IMAGE URL..."
+                          value={profileImage}
+                          onChange={e => setProfileImage(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex-1 space-y-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Header Title</label>
+                        <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-black text-lg" value={dynamicAbout.title} onChange={e => setDynamicAbout({...dynamicAbout, title: e.target.value})} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Highlight Text Colorized</label>
+                        <input className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-black text-lg text-indigo-500" value={dynamicAbout.highlight} onChange={e => setDynamicAbout({...dynamicAbout, highlight: e.target.value})} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Narrative Narrative</label>
+                        <textarea rows={4} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-medium" value={dynamicAbout.description} onChange={e => setDynamicAbout({...dynamicAbout, description: e.target.value})} />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Stats Manager */}
+                  <div className="space-y-6 pt-6 border-t border-slate-50">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Performance Metrics (Stats)</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                       {dynamicAbout.stats.map((stat, i) => (
+                         <div key={i} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2">
+                            <input className="w-full bg-transparent border-none p-0 text-[10px] font-black uppercase text-slate-400 tracking-widest" value={stat.l} onChange={e => {
+                              const newStats = [...dynamicAbout.stats];
+                              newStats[i].l = e.target.value;
+                              setDynamicAbout({...dynamicAbout, stats: newStats});
+                            }} />
+                            <input className="w-full bg-transparent border-none p-0 text-2xl font-black text-slate-900" value={stat.v} onChange={e => {
+                              const newStats = [...dynamicAbout.stats];
+                              newStats[i].v = e.target.value;
+                              setDynamicAbout({...dynamicAbout, stats: newStats});
+                            }} />
+                         </div>
+                       ))}
+                    </div>
+                  </div>
+
+                  <button onClick={() => saveSiteConfig({about: dynamicAbout, profileImage})} className="w-full py-6 bg-indigo-600 text-white font-black rounded-2xl uppercase tracking-widest shadow-xl hover:scale-[1.01] transition-all">SYNCHRONIZE CORE DATA</button>
+                </div>
+              </div>
+            )}
+
+            {/* Other Admin Tabs (Working, Appts, Msgs, Contact Edit) remain same with clean UI... */}
+            {/* Experience Lab */}
+            {activeAdminTab === AdminSection.WORKING && (
+              <div className="max-w-5xl space-y-10 animate-in fade-in slide-in-from-bottom-4 text-left">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-4xl font-black tracking-tighter uppercase">Experience Lab</h3>
+                  <button onClick={async () => await addDoc(collection(db, "experiences"), {company: 'NEW AGENCY', role: 'ROLE', period: '20XX - 20XX', tasks: ['Task 1', 'Task 2'], logo: 'https://cdn-icons-png.flaticon.com/512/3242/3242257.png'})} className="px-8 py-4 bg-emerald-500 text-white font-black rounded-xl uppercase tracking-widest text-xs shadow-lg hover:scale-105 active:scale-95 transition-all">+ New Record</button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {dynamicExperiences.map(exp => (
+                    <div key={exp.id} className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm space-y-6">
+                       <div className="flex items-center gap-4">
+                          <img src={exp.logo} className="w-12 h-12 rounded-xl border p-1" alt="Logo" />
+                          <div className="flex-1">
+                            <input className="font-black text-xl uppercase w-full bg-transparent outline-none focus:text-indigo-500" value={exp.company} onChange={e => updateDoc(doc(db, "experiences", exp.id), {company: e.target.value})} />
+                            <input className="font-bold text-slate-400 uppercase w-full bg-transparent outline-none text-[10px] tracking-widest" value={exp.role} onChange={e => updateDoc(doc(db, "experiences", exp.id), {role: e.target.value})} />
+                          </div>
+                       </div>
+                       <input className="w-full p-2 bg-slate-50 border border-slate-100 rounded-lg text-xs font-black uppercase tracking-widest" value={exp.period} onChange={e => updateDoc(doc(db, "experiences", exp.id), {period: e.target.value})} />
+                       <button onClick={() => deleteItem("experiences", exp.id)} className="text-red-500 text-[9px] font-black uppercase tracking-widest opacity-50 hover:opacity-100 transition-opacity">Delete History</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Project Vault Grid */}
+            {activeAdminTab === AdminSection.PORTFOLIO && (
+              <div className="max-w-6xl space-y-10 animate-in fade-in slide-in-from-bottom-4 text-left">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-4xl font-black tracking-tighter uppercase">Project Vault</h3>
+                  <button onClick={addProject} className="px-8 py-4 bg-blue-600 text-white font-black rounded-xl uppercase tracking-widest text-xs shadow-lg hover:scale-105 transition-all">+ Deploy New Project</button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                  {dynamicProjects.map(proj => (
+                    <div key={proj.id} className="group bg-white rounded-[2.5rem] overflow-hidden border border-slate-100 shadow-sm flex flex-col relative">
+                       <div className="h-48 w-full overflow-hidden relative">
+                         <img src={proj.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={proj.title} />
+                         <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <button onClick={() => setEditingProject(proj)} className="bg-white text-slate-900 px-6 py-2 rounded-full font-black text-[10px] uppercase shadow-xl transform translate-y-4 group-hover:translate-y-0 transition-all">Open Editor</button>
+                         </div>
+                       </div>
+                       <div className="p-8 space-y-4 flex-1 flex flex-col">
+                          <h4 className="font-black text-xl uppercase leading-none">{proj.title}</h4>
+                          <p className="text-blue-500 font-black text-[10px] tracking-widest uppercase">{proj.stats}</p>
+                          <div className="pt-4 mt-auto border-t border-slate-50 flex justify-between items-center">
+                             <button onClick={() => setEditingProject(proj)} className="text-slate-400 hover:text-blue-500 font-black text-[10px] uppercase tracking-widest transition-colors flex items-center gap-1">
+                               Configure
+                             </button>
+                             <button onClick={() => deleteItem("projects", proj.id)} className="text-red-300 hover:text-red-500 font-black text-[10px] uppercase tracking-widest transition-colors flex items-center gap-1">
+                               Wipe Module
+                             </button>
+                          </div>
+                       </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Sync Requests & Messages remain functionally same as before... */}
+            {activeAdminTab === AdminSection.APPOINTMENT && (
+              <div className="max-w-5xl space-y-10 animate-in fade-in slide-in-from-bottom-4">
+                <h3 className="text-4xl font-black tracking-tighter uppercase text-left">Sync Requests</h3>
+                <div className="space-y-4">
+                   {appointments.map(appt => (
+                     <div key={appt.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-8">
+                        <div className="flex-1 space-y-2 text-left">
+                          <h4 className="font-black text-2xl uppercase leading-none">{appt.clientName}</h4>
+                          <div className="flex gap-4 items-center">
+                            <span className="text-emerald-500 font-black text-xs tracking-widest">WA: {appt.clientWhatsApp}</span>
+                            <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">{appt.service}</span>
+                          </div>
+                        </div>
+                        <button onClick={() => deleteItem("appointments", appt.id)} className="px-8 py-4 bg-red-50 text-red-500 font-black text-[10px] rounded-2xl uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all">Clear Sync</button>
+                     </div>
+                   ))}
+                </div>
+              </div>
+            )}
+
+            {activeAdminTab === AdminSection.MESSAGES && (
+              <div className="max-w-5xl space-y-10 animate-in fade-in slide-in-from-bottom-4">
+                <h3 className="text-4xl font-black tracking-tighter uppercase text-left">Comm Inbox</h3>
+                <div className="grid grid-cols-1 gap-8">
+                  {messages.map(msg => (
+                    <div key={msg.id} className="bg-white p-12 rounded-[3rem] border border-slate-100 shadow-sm space-y-6 text-left">
+                       <div className="flex justify-between items-start">
+                         <div className="space-y-2">
+                           <h4 className="font-black text-3xl uppercase leading-none">{msg.name}</h4>
+                           <p className="text-indigo-500 font-bold text-xs uppercase tracking-widest bg-indigo-50 px-3 py-1 rounded-full inline-block">{msg.email}</p>
+                         </div>
+                         <button onClick={() => deleteItem("messages", msg.id)} className="text-red-300 hover:text-red-500 font-black text-[10px] uppercase tracking-widest border border-red-100 px-4 py-2 rounded-xl">Archive</button>
+                       </div>
+                       <p className="text-slate-600 font-medium text-xl leading-relaxed italic">"{msg.message}"</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeAdminTab === AdminSection.CONTACT_EDIT && (
+              <div className="max-w-4xl space-y-10 animate-in fade-in slide-in-from-bottom-4">
+                <h3 className="text-4xl font-black tracking-tighter uppercase text-left">ID Entity Config</h3>
+                <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-10 text-left">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-3">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Primary Email</label>
+                       <input className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold" value={contactInfo.email} onChange={e => setContactInfo({...contactInfo, email: e.target.value})} />
+                    </div>
+                    <div className="space-y-3">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">WhatsApp Link</label>
+                       <input className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold" value={contactInfo.whatsapp} onChange={e => setContactInfo({...contactInfo, whatsapp: e.target.value})} />
+                    </div>
+                  </div>
+                  <button onClick={() => saveSiteConfig({contact: contactInfo})} className="w-full py-6 bg-indigo-600 text-white font-black rounded-2xl uppercase tracking-widest shadow-xl">Update Global Identity</button>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       )}
 
+      {/* Hero Visual Backgrounds */}
       <div className="light-background">
         <div className="floating-blob w-[50vw] h-[50vw] bg-indigo-50/50 top-[-5%] left-[-5%]"></div>
         <div className="floating-blob w-[40vw] h-[40vw] bg-cyan-50/50 bottom-[-5%] right-[-5%]"></div>
@@ -252,13 +696,13 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* About Popup */}
+      {/* Popups */}
       <SectionModal section={Section.ABOUT} isOpen={activeSection === Section.ABOUT} onClose={closeSection}>
-        <div className="flex flex-col lg:flex-row gap-8 lg:gap-14 items-center lg:items-start">
+        <div className="flex flex-col lg:flex-row gap-8 lg:gap-14 items-center lg:items-start text-left">
           <div className="w-full lg:w-2/5 max-w-[360px]">
              <img src={profileImage} className="w-full h-auto rounded-3xl border-4 border-white shadow-xl bg-white p-1" />
           </div>
-          <div className="flex-1 text-left space-y-6 lg:space-y-10">
+          <div className="flex-1 space-y-6 lg:space-y-10">
             <h3 className="text-2xl lg:text-6xl font-black text-slate-900 tracking-tighter uppercase leading-tight">
                {dynamicAbout.title.replace(dynamicAbout.highlight, '')} <span className="text-cyan-500">{dynamicAbout.highlight}</span>
             </h3>
@@ -275,11 +719,10 @@ const App: React.FC = () => {
         </div>
       </SectionModal>
 
-      {/* Working Popup */}
       <SectionModal section={Section.WORKING} isOpen={activeSection === Section.WORKING} onClose={closeSection}>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8 text-left">
           {dynamicExperiences.map((exp) => (
-            <div key={exp.id} className="bg-white/60 p-6 lg:p-10 rounded-3xl border border-white shadow-sm text-left flex flex-col sm:flex-row gap-6">
+            <div key={exp.id} className="bg-white/60 p-6 lg:p-10 rounded-3xl border border-white shadow-sm flex flex-col sm:flex-row gap-6">
               <img src={exp.logo} className="w-16 h-16 lg:w-20 lg:h-20 rounded-2xl bg-white p-2 flex-shrink-0 shadow-sm border border-slate-50" />
               <div className="flex-1">
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4 gap-2">
@@ -298,80 +741,41 @@ const App: React.FC = () => {
         </div>
       </SectionModal>
 
-      {/* Enhanced Portfolio Popup with Detail View */}
       <SectionModal section={Section.PORTFOLIO} isOpen={activeSection === Section.PORTFOLIO} onClose={closeSection}>
         {selectedProject ? (
-          // Detail View
           <div className="animate-modal flex flex-col gap-10">
-            {/* Back Button */}
-            <button 
-              onClick={() => { setSelectedProject(null); setActiveGalleryIndex(0); }}
-              className="group flex items-center gap-3 self-start text-xs lg:text-lg font-black text-blue-500 uppercase tracking-widest"
-            >
+            <button onClick={() => { setSelectedProject(null); setActiveGalleryIndex(0); }} className="group flex items-center gap-3 self-start text-xs lg:text-lg font-black text-blue-500 uppercase tracking-widest">
               <div className="w-8 h-8 lg:w-12 lg:h-12 rounded-full border border-blue-200 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-all shadow-sm">
-                <svg className="w-4 h-4 lg:w-6 lg:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" />
-                </svg>
+                <svg className="w-4 h-4 lg:w-6 lg:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg>
               </div>
               BACK TO PORTFOLIO
             </button>
-
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16">
-              {/* Image Gallery Column */}
               <div className="space-y-6">
                 <div className="relative aspect-[4/3] rounded-[2.5rem] overflow-hidden shadow-2xl bg-slate-900 group">
-                  <img 
-                    src={selectedProject.gallery[activeGalleryIndex]} 
-                    className="w-full h-full object-cover transition-transform duration-700" 
-                    alt={selectedProject.title}
-                  />
-                  
-                  {/* Navigation Arrows */}
+                  <img src={selectedProject.gallery[activeGalleryIndex]} className="w-full h-full object-cover transition-transform duration-700" alt={selectedProject.title} />
                   <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 flex justify-between pointer-events-none">
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); prevImage(); }}
-                      className="pointer-events-auto w-10 h-10 lg:w-14 lg:h-14 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 text-white flex items-center justify-center hover:bg-white/40 active:scale-90 transition-all shadow-lg"
-                    >
-                      <svg className="w-6 h-6 lg:w-8 lg:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" />
-                      </svg>
+                    <button onClick={(e) => { e.stopPropagation(); prevImage(); }} className="pointer-events-auto w-10 h-10 lg:w-14 lg:h-14 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 text-white flex items-center justify-center hover:bg-white/40 active:scale-90 transition-all shadow-lg">
+                      <svg className="w-6 h-6 lg:w-8 lg:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg>
                     </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); nextImage(); }}
-                      className="pointer-events-auto w-10 h-10 lg:w-14 lg:h-14 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 text-white flex items-center justify-center hover:bg-white/40 active:scale-90 transition-all shadow-lg"
-                    >
-                      <svg className="w-6 h-6 lg:w-8 lg:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
-                      </svg>
+                    <button onClick={(e) => { e.stopPropagation(); nextImage(); }} className="pointer-events-auto w-10 h-10 lg:w-14 lg:h-14 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 text-white flex items-center justify-center hover:bg-white/40 active:scale-90 transition-all shadow-lg">
+                      <svg className="w-6 h-6 lg:w-8 lg:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
                     </button>
                   </div>
-
-                  {/* Indicators */}
                   <div className="absolute bottom-6 inset-x-0 flex justify-center gap-2">
                     {selectedProject.gallery.map((_, i) => (
-                      <div 
-                        key={i} 
-                        className={`h-1.5 lg:h-2 rounded-full transition-all duration-300 ${activeGalleryIndex === i ? 'w-8 bg-blue-500' : 'w-2 bg-white/50'}`}
-                      />
+                      <div key={i} className={`h-1.5 lg:h-2 rounded-full transition-all duration-300 ${activeGalleryIndex === i ? 'w-8 bg-blue-500' : 'w-2 bg-white/50'}`} />
                     ))}
                   </div>
                 </div>
-
-                {/* Thumbnails */}
                 <div className="grid grid-cols-4 gap-3">
                   {selectedProject.gallery.map((img, i) => (
-                    <button 
-                      key={i}
-                      onClick={() => setActiveGalleryIndex(i)}
-                      className={`aspect-square rounded-xl overflow-hidden border-2 transition-all ${activeGalleryIndex === i ? 'border-blue-500 scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'}`}
-                    >
+                    <button key={i} onClick={() => setActiveGalleryIndex(i)} className={`aspect-square rounded-xl overflow-hidden border-2 transition-all ${activeGalleryIndex === i ? 'border-blue-500 scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'}`}>
                       <img src={img} className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>
               </div>
-
-              {/* Information Column */}
               <div className="text-left space-y-8">
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2 mb-4">
@@ -380,66 +784,31 @@ const App: React.FC = () => {
                     ))}
                   </div>
                   <h3 className="text-3xl lg:text-7xl font-black text-slate-900 tracking-tighter uppercase leading-none">{selectedProject.title}</h3>
-                  <div className="h-1.5 w-24 bg-blue-500 rounded-full mt-4" />
                 </div>
-
                 <div className="bg-slate-50 p-6 lg:p-10 rounded-[2rem] border border-slate-100 space-y-6">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-2xl bg-blue-500 flex items-center justify-center text-2xl text-white shadow-lg shadow-blue-200">📊</div>
-                    <div>
-                      <p className="text-[10px] font-black text-slate-400 tracking-[0.2em] uppercase">Impact Metric</p>
-                      <p className="text-xl lg:text-3xl font-black text-slate-900">{selectedProject.stats}</p>
-                    </div>
+                    <div><p className="text-[10px] font-black text-slate-400 tracking-[0.2em] uppercase">Impact Metric</p><p className="text-xl lg:text-3xl font-black text-slate-900">{selectedProject.stats}</p></div>
                   </div>
                   <p className="text-sm lg:text-2xl font-medium text-slate-500 leading-relaxed italic">"{selectedProject.description}"</p>
                 </div>
-
                 <div className="space-y-6">
                   <p className="text-[10px] lg:text-xs font-black text-slate-400 tracking-[0.4em] uppercase">PROJECT OVERVIEW</p>
-                  <p className="text-base lg:text-2xl font-medium text-slate-600 leading-relaxed">
-                    {selectedProject.longDescription}
-                  </p>
-                </div>
-
-                <div className="pt-6">
-                  <button 
-                    onClick={() => setActiveSection(Section.CONTACT)}
-                    className="w-full py-6 lg:py-10 rounded-2xl bg-slate-900 text-white font-black tracking-[0.3em] uppercase text-xs lg:text-2xl hover:bg-blue-600 transition-all shadow-xl hover:-translate-y-1"
-                  >
-                    INQUIRE ABOUT THIS FRAMEWORK
-                  </button>
+                  <p className="text-base lg:text-2xl font-medium text-slate-600 leading-relaxed">{selectedProject.longDescription}</p>
                 </div>
               </div>
             </div>
           </div>
         ) : (
-          // Grid View
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-10">
             {dynamicProjects.map((proj) => (
-              <button 
-                key={proj.id} 
-                onClick={() => { setSelectedProject(proj); setActiveGalleryIndex(0); }}
-                className="group bg-white/60 rounded-[2.5rem] overflow-hidden border border-white shadow-sm transition-all hover:shadow-2xl hover:-translate-y-2 flex flex-col text-left"
-              >
+              <button key={proj.id} onClick={() => { setSelectedProject(proj); setActiveGalleryIndex(0); }} className="group bg-white/60 rounded-[2.5rem] overflow-hidden border border-white shadow-sm transition-all hover:shadow-2xl hover:-translate-y-2 flex flex-col text-left">
                 <div className="aspect-[4/3] w-full overflow-hidden relative">
                   <img src={proj.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                  <div className="absolute top-5 left-5">
-                    <span className="bg-slate-900/80 backdrop-blur-md text-white text-[9px] font-black px-4 py-2 rounded-full uppercase tracking-widest">{proj.stats}</span>
-                  </div>
-                  <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/20 transition-all duration-500 flex items-center justify-center">
-                    <div className="w-14 h-14 rounded-full bg-white text-blue-500 flex items-center justify-center opacity-0 group-hover:opacity-100 scale-50 group-hover:scale-100 transition-all duration-500 shadow-xl">
-                      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
-                      </svg>
-                    </div>
-                  </div>
+                  <div className="absolute top-5 left-5"><span className="bg-slate-900/80 backdrop-blur-md text-white text-[9px] font-black px-4 py-2 rounded-full uppercase tracking-widest">{proj.stats}</span></div>
                 </div>
                 <div className="p-8 lg:p-10 space-y-4 flex-1 flex flex-col">
-                  <div className="flex flex-wrap gap-2">
-                    {proj.tags?.slice(0, 2).map(tag => (
-                      <span key={tag} className="text-[8px] font-black bg-slate-100 text-slate-400 px-3 py-1 rounded-full uppercase">{tag}</span>
-                    ))}
-                  </div>
+                  <div className="flex flex-wrap gap-2">{proj.tags?.slice(0, 2).map(tag => (<span key={tag} className="text-[8px] font-black bg-slate-100 text-slate-400 px-3 py-1 rounded-full uppercase">{tag}</span>))}</div>
                   <h4 className="text-xl lg:text-3xl font-black text-slate-900 tracking-tight uppercase leading-tight group-hover:text-blue-500 transition-colors">{proj.title}</h4>
                   <p className="text-slate-500 text-xs lg:text-lg font-medium leading-relaxed line-clamp-2">{proj.description}</p>
                 </div>
@@ -449,138 +818,57 @@ const App: React.FC = () => {
         )}
       </SectionModal>
 
-      {/* Smart Appointment Popup */}
+      {/* Appointment Popup */}
       <SectionModal section={Section.APPOINTMENT} isOpen={activeSection === Section.APPOINTMENT} onClose={closeSection}>
          <div className="max-w-5xl mx-auto">
             {apptState === 'success' ? (
               <div className="py-20 text-center space-y-10 animate-modal bg-emerald-50/40 rounded-[3rem] border border-emerald-100">
                  <div className="text-8xl lg:text-[10rem] animate-pulse">🚀</div>
-                 <div className="space-y-4">
-                   <h4 className="text-3xl lg:text-6xl font-black text-slate-900 uppercase tracking-tighter">Transmission Confirmed</h4>
-                   <p className="text-slate-500 text-sm lg:text-xl font-medium max-w-md mx-auto px-6">The architectural handshake has been logged. Stand by for WhatsApp confirmation.</p>
-                 </div>
-                 <button onClick={() => setApptState('idle')} className="px-12 py-5 bg-emerald-500 text-white font-black uppercase text-xs lg:text-lg tracking-widest rounded-full shadow-lg hover:bg-emerald-600 transition-all">Start New Audit</button>
+                 <h4 className="text-3xl lg:text-6xl font-black text-slate-900 uppercase tracking-tighter">Transmission Confirmed</h4>
+                 <button onClick={() => setApptState('idle')} className="px-12 py-5 bg-emerald-500 text-white font-black uppercase tracking-widest rounded-full shadow-lg">New Audit</button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-                
-                {/* Protocol Selection (Step 1) */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 text-left">
                 <div className="lg:col-span-4 space-y-8">
                    <div className="bg-rose-500 p-8 lg:p-10 rounded-[2.5rem] text-white shadow-xl space-y-4">
-                      <h4 className="text-2xl font-black uppercase tracking-tighter leading-none">Schedule <br/>Audit</h4>
-                      <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest">Protocol Sync Engine v5.2</p>
-                      
-                      {selectedService && (
-                        <div className="pt-6 border-t border-white/20">
-                          <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">TARGETED ACTION</p>
-                          <p className="text-xl font-black uppercase leading-tight">{selectedService.name}</p>
-                        </div>
-                      )}
+                      <h4 className="text-2xl font-black uppercase tracking-tighter leading-none">Schedule Audit</h4>
+                      {selectedService && <div className="pt-6 border-t border-white/20"><p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">TARGETED ACTION</p><p className="text-xl font-black uppercase leading-tight">{selectedService.name}</p></div>}
                    </div>
-
                    <div className="space-y-4">
                       <p className="text-[10px] font-black text-slate-400 tracking-[0.4em] uppercase ml-2">1. SELECT ACTION</p>
                       <div className="space-y-3">
                         {dynamicServices.map(s => (
-                          <button 
-                            key={s.id} 
-                            onClick={() => setSelectedService(s)} 
-                            className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center gap-4 text-left ${selectedService?.id === s.id ? 'border-rose-400 bg-rose-50/50 shadow-md' : 'border-slate-50 bg-white hover:border-rose-200'}`}
-                          >
+                          <button key={s.id} onClick={() => setSelectedService(s)} className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center gap-4 text-left ${selectedService?.id === s.id ? 'border-rose-400 bg-rose-50/50 shadow-md' : 'border-slate-50 bg-white hover:border-rose-200'}`}>
                             <span className="text-2xl w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-50">{s.icon}</span>
-                            <div className="flex-1">
-                              <p className="text-[11px] font-black text-slate-900 uppercase leading-none">{s.name}</p>
-                              <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">{s.duration} • {s.price}</p>
-                            </div>
+                            <div className="flex-1"><p className="text-[11px] font-black text-slate-900 uppercase leading-none">{s.name}</p></div>
                           </button>
                         ))}
                       </div>
                    </div>
                 </div>
-
-                {/* Identity & Calendar (Steps 2 & 3) */}
                 <div className="lg:col-span-8 space-y-10">
-                   
-                   {/* Step 2: Identity Inputs */}
                    <div className="bg-white p-8 lg:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8">
                       <p className="text-[10px] font-black text-slate-400 tracking-[0.4em] uppercase">2. AUDIT IDENTITY</p>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                          <label className="text-[9px] font-black text-slate-400 tracking-widest uppercase ml-1">YOUR NAME</label>
-                          <input 
-                            required
-                            type="text" 
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-800 font-black text-sm lg:text-lg focus:border-rose-400 outline-none transition-all"
-                            placeholder="FULL NAME"
-                            value={clientName}
-                            onChange={e => setClientName(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[9px] font-black text-slate-400 tracking-widest uppercase ml-1">WHATSAPP NUMBER</label>
-                          <input 
-                            required
-                            type="tel" 
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-800 font-black text-sm lg:text-lg focus:border-rose-400 outline-none transition-all"
-                            placeholder="+880 1XXX-XXXXXX"
-                            value={clientWhatsApp}
-                            onChange={e => setClientWhatsApp(e.target.value)}
-                          />
-                        </div>
+                        <input required type="text" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-800 font-black text-sm focus:border-rose-400 outline-none" placeholder="FULL NAME" value={clientName} onChange={e => setClientName(e.target.value)} />
+                        <input required type="tel" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-800 font-black text-sm focus:border-rose-400 outline-none" placeholder="WHATSAPP NUMBER" value={clientWhatsApp} onChange={e => setClientWhatsApp(e.target.value)} />
                       </div>
                    </div>
-
-                   {/* Step 3: Smart Calendar Grid */}
                    <div className="bg-white p-8 lg:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8">
-                      <div className="flex justify-between items-center">
-                        <p className="text-[10px] font-black text-slate-400 tracking-[0.4em] uppercase">3. CALENDAR HUB</p>
-                        {appointmentDate && <span className="text-[9px] font-black text-rose-500 uppercase">Selected: {appointmentDate}</span>}
-                      </div>
-
+                      <p className="text-[10px] font-black text-slate-400 tracking-[0.4em] uppercase">3. CALENDAR HUB</p>
                       <div className="flex overflow-x-auto pb-4 gap-3 no-scrollbar scroll-smooth">
                         {availableDates.map((d) => (
-                          <button
-                            key={d.date}
-                            onClick={() => setAppointmentDate(d.date)}
-                            className={`flex-shrink-0 w-16 h-20 sm:w-20 sm:h-24 rounded-2xl flex flex-col items-center justify-center gap-1 border-2 transition-all ${appointmentDate === d.date ? 'border-rose-500 bg-rose-500 text-white shadow-lg scale-105' : 'border-slate-100 bg-slate-50 text-slate-400 hover:border-rose-200 hover:text-rose-500'}`}
-                          >
-                            <span className={`text-[9px] font-black uppercase tracking-widest ${appointmentDate === d.date ? 'text-white' : 'text-slate-400'}`}>{d.day}</span>
-                            <span className="text-xl sm:text-3xl font-black">{d.num}</span>
-                            {appointmentDate === d.date && <div className="w-1 h-1 bg-white rounded-full mt-1 animate-pulse" />}
+                          <button key={d.date} onClick={() => setAppointmentDate(d.date)} className={`flex-shrink-0 w-16 h-20 rounded-2xl flex flex-col items-center justify-center gap-1 border-2 transition-all ${appointmentDate === d.date ? 'border-rose-500 bg-rose-500 text-white shadow-lg' : 'border-slate-100 bg-slate-50 text-slate-400 hover:border-rose-200'}`}>
+                            <span className="text-[9px] font-black uppercase tracking-widest">{d.day}</span><span className="text-xl font-black">{d.num}</span>
                           </button>
                         ))}
                       </div>
-
-                      {/* Time Slots */}
-                      <div className="space-y-6 pt-4 border-t border-slate-50">
-                         <div className="flex justify-between items-center px-1">
-                           <p className="text-[10px] font-black text-slate-400 tracking-[0.4em] uppercase">4. SYNC WINDOW</p>
-                           {appointmentTime && <span className="text-[9px] font-black text-rose-500 uppercase">SLOT: {appointmentTime}</span>}
-                         </div>
-                         <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
-                            {['09:00', '10:30', '12:00', '13:30', '15:00', '16:30', '18:00', '19:30', '21:00', '22:30'].map(t => (
-                              <button 
-                                key={t} 
-                                onClick={() => setAppointmentTime(t)} 
-                                className={`py-3 rounded-lg border-2 font-black text-[9px] sm:text-xs uppercase transition-all ${appointmentTime === t ? 'bg-rose-500 border-rose-500 text-white shadow-md' : 'bg-slate-50 border-slate-50 text-slate-400 hover:border-rose-200 hover:text-rose-400'}`}
-                              >
-                                {t}
-                              </button>
-                            ))}
-                         </div>
+                      <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 pt-4 border-t border-slate-50">
+                        {['09:00', '12:00', '15:00', '18:00', '21:00'].map(t => (
+                          <button key={t} onClick={() => setAppointmentTime(t)} className={`py-3 rounded-lg border-2 font-black text-[9px] uppercase transition-all ${appointmentTime === t ? 'bg-rose-500 border-rose-500 text-white shadow-md' : 'bg-slate-50 border-slate-50 text-slate-400 hover:border-rose-200 hover:text-rose-400'}`}>{t}</button>
+                        ))}
                       </div>
-
-                      {/* Action */}
-                      <div className="pt-8">
-                         <button 
-                           disabled={!selectedService || !appointmentDate || !appointmentTime || !clientName || !clientWhatsApp}
-                           onClick={handleAppointmentSubmit}
-                           className={`w-full py-6 lg:py-8 rounded-2xl font-black tracking-[0.4em] uppercase text-xs lg:text-xl transition-all shadow-xl flex items-center justify-center gap-4 ${(!selectedService || !appointmentDate || !appointmentTime || !clientName || !clientWhatsApp) ? 'bg-slate-100 text-slate-300' : 'bg-gradient-to-r from-rose-500 to-pink-500 text-white hover:scale-[1.01] active:scale-95'}`}
-                         >
-                           {apptState === 'sending' ? 'TRANSMITTING...' : 'ESTABLISH ARCHITECTURAL SYNC'}
-                         </button>
-                         <p className="text-[8px] font-bold text-slate-300 text-center mt-6 uppercase tracking-[0.2em]">handshake verified by secure cloud architecture</p>
-                      </div>
+                      <button disabled={!selectedService || !appointmentDate || !appointmentTime || !clientName || !clientWhatsApp} onClick={handleAppointmentSubmit} className={`w-full py-6 lg:py-8 rounded-2xl font-black tracking-[0.4em] uppercase text-xs transition-all shadow-xl ${(!selectedService || !appointmentDate || !appointmentTime || !clientName || !clientWhatsApp) ? 'bg-slate-100 text-slate-300' : 'bg-rose-500 text-white hover:scale-[1.01] active:scale-95'}`}>{apptState === 'sending' ? 'TRANSMITTING...' : 'ESTABLISH ARCHITECTURAL SYNC'}</button>
                    </div>
                 </div>
               </div>
@@ -590,8 +878,8 @@ const App: React.FC = () => {
 
       {/* Contact Popup */}
       <SectionModal section={Section.CONTACT} isOpen={activeSection === Section.CONTACT} onClose={closeSection}>
-         <div className="flex flex-col lg:flex-row gap-10 lg:gap-14">
-            <div className="lg:w-1/3 text-left space-y-8">
+         <div className="flex flex-col lg:flex-row gap-10 lg:gap-14 text-left">
+            <div className="lg:w-1/3 space-y-8">
                <div className="space-y-2">
                  <h4 className="text-3xl lg:text-6xl font-black text-orange-500 tracking-tighter uppercase leading-none">THE <br/><span className="text-orange-300">HUB</span></h4>
                  <p className="text-[10px] lg:text-sm font-bold tracking-[0.4em] text-slate-400 uppercase">Secure Communication Core</p>
@@ -614,26 +902,16 @@ const App: React.FC = () => {
                    <div className="py-20 text-center space-y-8 animate-modal">
                       <div className="text-7xl lg:text-9xl">✉️</div>
                       <h4 className="text-2xl lg:text-5xl font-black text-slate-900 uppercase tracking-tighter">Transmission Sent</h4>
-                      <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Encryption Successful.</p>
                       <button onClick={() => setFormState('idle')} className="text-xs lg:text-xl font-black text-indigo-500 underline uppercase tracking-widest">New Transmission</button>
                    </div>
                  ) : (
                    <form onSubmit={handleContactSubmit} className="space-y-5 lg:space-y-8">
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-8">
-                       <div className="space-y-1.5">
-                         <label className="text-[9px] font-black text-slate-400 tracking-[0.3em] uppercase ml-1">IDENTITY</label>
-                         <input required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-5 text-slate-900 font-black text-sm lg:text-2xl focus:border-orange-400 shadow-sm outline-none" placeholder="NAME" value={contactForm.name} onChange={e => setContactForm({...contactForm, name: e.target.value})} />
-                       </div>
-                       <div className="space-y-1.5">
-                         <label className="text-[9px] font-black text-slate-400 tracking-[0.3em] uppercase ml-1">SECURE MAIL</label>
-                         <input required type="email" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-5 text-slate-900 font-black text-sm lg:text-2xl focus:border-orange-400 shadow-sm outline-none" placeholder="EMAIL" value={contactForm.email} onChange={e => setContactForm({...contactForm, email: e.target.value})} />
-                       </div>
+                       <input required className="w-full bg-slate-50 border border-slate-100 rounded-xl p-5 text-slate-900 font-black text-sm focus:border-orange-400 outline-none" placeholder="NAME" value={contactForm.name} onChange={e => setContactForm({...contactForm, name: e.target.value})} />
+                       <input required type="email" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-5 text-slate-900 font-black text-sm focus:border-orange-400 outline-none" placeholder="EMAIL" value={contactForm.email} onChange={e => setContactForm({...contactForm, email: e.target.value})} />
                      </div>
-                     <div className="space-y-1.5">
-                       <label className="text-[9px] font-black text-slate-400 tracking-[0.3em] uppercase ml-1">ENCRYPTED MESSAGE</label>
-                       <textarea required rows={4} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-6 lg:p-10 text-slate-900 font-black text-sm lg:text-2xl focus:border-orange-400 shadow-sm resize-none outline-none" placeholder="MESSAGE BODY..." value={contactForm.message} onChange={e => setContactForm({...contactForm, message: e.target.value})} />
-                     </div>
-                     <button className="w-full py-6 lg:py-10 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black tracking-[0.4em] lg:tracking-[0.8em] uppercase text-xs lg:text-2xl shadow-xl hover:-translate-y-1 transition-all">EXECUTE SEND</button>
+                     <textarea required rows={4} className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-6 lg:p-10 text-slate-900 font-black text-sm focus:border-orange-400 resize-none outline-none" placeholder="MESSAGE BODY..." value={contactForm.message} onChange={e => setContactForm({...contactForm, message: e.target.value})} />
+                     <button className="w-full py-6 lg:py-10 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black tracking-[0.4em] uppercase text-xs lg:text-2xl shadow-xl hover:-translate-y-1 transition-all">EXECUTE SEND</button>
                    </form>
                  )}
                </div>
