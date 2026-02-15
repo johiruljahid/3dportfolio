@@ -8,6 +8,15 @@ export enum Section {
   CONTACT = 'CONTACT'
 }
 
+export enum AdminSection {
+  ABOUT = 'ABOUT_PROFILE',
+  WORKING = 'EXPERIENCE_LAB',
+  PORTFOLIO = 'PROJECT_VAULT',
+  APPOINTMENT = 'SYNC_REQUESTS',
+  MESSAGES = 'COMM_INBOX',
+  CONTACT_EDIT = 'SITE_IDENTITY'
+}
+
 export interface Experience {
   id: string;
   company: string;
@@ -24,6 +33,7 @@ export interface Project {
   description: string;
   longDescription: string;
   image: string;
+  gallery: string[];
   color: string;
   tags: string[];
 }
@@ -34,4 +44,11 @@ export interface AppointmentService {
   duration: string;
   icon: string;
   price?: string;
+}
+
+export interface ContactInfo {
+  email: string;
+  linkedin: string;
+  whatsapp: string;
+  phone: string;
 }

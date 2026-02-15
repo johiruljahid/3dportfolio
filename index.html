@@ -3,19 +3,31 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Shamim Ahmed | Digital Architect</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700;900&display=swap" rel="stylesheet">
     <style>
+        /* Hide scrollbars globally but keep functionality */
+        * {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        *::-webkit-scrollbar {
+            display: none;
+        }
+
         body {
             font-family: 'Exo 2', sans-serif;
             background-color: #f8fafc;
             color: #1e293b;
             overflow-x: hidden;
+            width: 100%;
+            height: 100%;
         }
+
         .light-background {
             position: fixed;
             top: 0;
@@ -25,6 +37,7 @@
             background: linear-gradient(135deg, #f1f5f9 0%, #ffffff 100%);
             z-index: -1;
         }
+
         .floating-blob {
             position: absolute;
             border-radius: 50%;
@@ -33,58 +46,71 @@
             z-index: -1;
             animation: float 20s infinite alternate ease-in-out;
         }
+
         @keyframes float {
             0% { transform: translate(0, 0) scale(1); }
             100% { transform: translate(50px, 50px) scale(1.1); }
         }
+
         .glass-panel {
-            background: rgba(255, 255, 255, 0.45);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.7);
-            box-shadow: 0 10px 40px 0 rgba(31, 38, 135, 0.08);
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 10px 40px 0 rgba(31, 38, 135, 0.1);
         }
+
         .perspective-1000 {
             perspective: 1000px;
         }
+
         .hover-3d:hover {
-            transform: translateZ(30px) rotateX(10deg) rotateY(-10deg);
+            transform: translateZ(50px) rotateX(10deg) rotateY(-10deg);
         }
+
         .transition-3d {
-            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1);
             transform-style: preserve-3d;
         }
+        
+        .text-3d-bold {
+            text-shadow: 
+                0 1px 0 #ccc,
+                0 2px 0 #c9c9c9,
+                0 3px 10px rgba(0,0,0,.15);
+        }
+        
+        .text-3d-light {
+            text-shadow: 0 1px 0 #eee, 0 2px 0 #e5e5e5;
+        }
+
+        .highlight-3d {
+            background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 4px 8px rgba(79, 70, 229, 0.3));
+        }
+
         @keyframes modal-reveal {
             from { opacity: 0; transform: scale(0.95) translateY(20px); }
             to { opacity: 1; transform: scale(1) translateY(0); }
         }
         .animate-modal {
-            animation: modal-reveal 0.6s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+            animation: modal-reveal 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
         }
-        ::-webkit-scrollbar {
-            width: 8px;
+
+        .smooth-scroll-container {
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior-y: contain;
         }
-        ::-webkit-scrollbar-track {
-            background: rgba(0, 0, 0, 0.02);
-        }
-        ::-webkit-scrollbar-thumb {
-            background: rgba(0, 0, 0, 0.1);
-            border-radius: 10px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: rgba(0, 0, 0, 0.2);
-        }
-        .text-glow-cyan { text-shadow: 0 0 10px rgba(6, 182, 212, 0.3); }
-        .text-glow-rose { text-shadow: 0 0 10px rgba(244, 63, 94, 0.3); }
-        .text-glow-indigo { text-shadow: 0 0 10px rgba(79, 70, 229, 0.3); }
-        .text-glow-orange { text-shadow: 0 0 10px rgba(249, 115, 22, 0.3); }
     </style>
 <script type="importmap">
 {
   "imports": {
-    "react/": "https://esm.sh/react@^19.2.4/",
     "react": "https://esm.sh/react@^19.2.4",
     "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/",
     "firebase/": "https://esm.sh/firebase@^12.9.0/",
     "vite": "https://esm.sh/vite@^7.3.1",
     "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.4"
