@@ -51,4 +51,7 @@ export interface ContactInfo {
   linkedin: string;
   whatsapp: string;
   phone: string;
+  facebook?: string;
+  instagram?: string;
+  website?: string;
 }
